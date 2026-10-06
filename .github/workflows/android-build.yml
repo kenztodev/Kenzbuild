@@ -1,0 +1,72 @@
+name: Web2APK Android Build
+
+run-name: Web2APK ${{ inputs.build_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Temporary build ID
+        required: true
+        type: string
+      build_type:
+        description: url or zip
+        required: true
+        type: string
+      project_type:
+        description: flutter or android for ZIP builds
+        required: false
+        type: string
+      gradle_build_type:
+        description: debug or release for ZIP builds
+        required: false
+        default: release
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dorg.gradle.jvmargs=-Xmx3g
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source and temporary input
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Flutter
+        if: ${{ inputs.build_type == 'zip' && inputs.project_type == 'flutter' }}
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build APK
+        run: node scripts/github-build.js "${{ inputs.build_id }}" "${{ inputs.build_type }}" "${{ inputs.project_type }}" "${{ inputs.gradle_build_type }}"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web2apk-${{ inputs.build_id }}
+          path: workflow-artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 1
+          
